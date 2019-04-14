@@ -1,6 +1,9 @@
+use webpki::EndEntityCert;
+use untrusted::Input;
 
 pub enum Error {
-    ParseError
+    ParseError,
+    Signature,
 }
 
 pub struct RegistrationResponse {
@@ -8,6 +11,38 @@ pub struct RegistrationResponse {
     key_handle: Vec<u8>,
     attestation_certificate: Vec<u8>,
     signature: Vec<u8>,
+}
+
+impl RegistrationResponse {
+    pub fn verify(&self, app_id: &[u8], client_data: &[u8]) -> Result<(), Error> {
+        let cert = EndEntityCert::from(Input::from(&self.attestation_certificate))
+            .map_err(|e| Error::Signature)?;
+
+        let msg_len = 1 + 32 + 32 + self.key_handle.len() + 65;
+        let appid_hash = ring::digest::digest(&ring::digest::SHA256, app_id);
+        let client_data_hash = ring::digest::digest(&ring::digest::SHA256, client_data);
+
+        let mut msg: Vec<u8> = Vec::with_capacity(msg_len);
+        msg.push(0x00);
+        msg.extend_from_slice(appid_hash.as_ref());
+        msg.extend_from_slice(client_data_hash.as_ref());
+        msg.extend_from_slice(&self.key_handle);
+        msg.extend_from_slice(&self.user_public_key);
+
+        let res = cert.verify_signature(&webpki::ECDSA_P256_SHA256, Input::from(&msg), Input::from(&self.signature))
+            .map_err(|e| Error::Signature)?;
+        Ok(())
+    }
+}
+
+#[test]
+fn test_reg_resp_verify() {
+    use base64;
+    let resp = base64::decode_config("BQTq2F9Hc8LbdhiJTczl-yTabd1ZhbOvOvCPd5-mpn05p_Ir1Q6KEbJ_HMbZFr-S4b85k87hMXCI6B0XAONfHk0bQFT93wm0sLD8vF_fVItyB-WJGOETm_I5szGVAPsgtX_sQsRZSdJoGV3D-5ALYBHZwL1G1yVOK4N7i6il8ZlDxJswggJDMIIBLaADAgECAgQX8O1GMAsGCSqGSIb3DQEBCzAuMSwwKgYDVQQDEyNZdWJpY28gVTJGIFJvb3QgQ0EgU2VyaWFsIDQ1NzIwMDYzMTAgFw0xNDA4MDEwMDAwMDBaGA8yMDUwMDkwNDAwMDAwMFowKTEnMCUGA1UEAwweWXViaWNvIFUyRiBFRSBTZXJpYWwgNDAxNjY1MzUwMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEQ-o66R9AJgeKoH6g3FI_WXmvdxUFy__TAreJbnl45E32rKCLQMy2nnKllZs1VfZX136Ff_pQLhUr2BB0C69RpaM7MDkwIgYJKwYBBAGCxAoCBBUxLjMuNi4xLjQuMS40MTQ4Mi4xLjIwEwYLKwYBBAGC5RwCAQEEBAMCBDAwCwYJKoZIhvcNAQELA4IBAQAvwnBqkckkOuQ35S9TJNDHSuAqdwQwRJbeF4KBDEG3ZNHdb1AcS5GL1FfzCGIiCAYVpMvaQZShExivRC204PlK7yj4zLCFds0eF7U6GH9h6JNxZnLXGcXBACk653kzkHBn7LvLIps4U--50K2w0gBQu5HM-B1ev_XXc0MDD4WWwlsY1SdL_w_OFQ-jo5uWCD_surmS-Iqcu5VlZntWzPdIpSeFznGGj7dpGzB676fQsQOizggEB0ikWmur8SqijlrNcMFAlvq0eNAzWNRDCu78b6ad1anwrAEKcanqQDrh4BbEPel9P_Gs6Ft94HYPxkfLFPFeaMJdwASMeXdV8SYVMEUCIQCLyfVmOeJEdK36OYW8JvpdEu7ae9SiaUf5EXnuzWUOBAIgG8M8Rt4B3onL6vdFGwYzzWKgeJGbriyLGxUbVH5KMnc", base64::URL_SAFE_NO_PAD).ok().unwrap();
+    let client_data= base64::decode_config("eyJjaGFsbGVuZ2UiOiJkZmdiaG5qa2xtLGZjZ2hqbm0iLCJvcmlnaW4iOiJodHRwczovL2xvY2FsaG9zdDoyMDIwIiwidHlwIjoibmF2aWdhdG9yLmlkLmZpbmlzaEVucm9sbG1lbnQifQ", base64::URL_SAFE_NO_PAD).ok().unwrap();
+    let reg_resp = parse_registration_response(&resp).ok().unwrap();
+    let res = reg_resp.verify(b"https://localhost:2020", &client_data);
+    assert!(res.is_ok());
 }
 
 pub fn parse_registration_response(data: &[u8]) -> Result<RegistrationResponse, Error> {
