@@ -13,17 +13,17 @@ pub enum Error {
 }
 
 pub struct RegistrationResponse {
-    user_public_key: Vec<u8>,
-    key_handle: Vec<u8>,
-    attestation_certificate: Vec<u8>,
-    signature: Vec<u8>,
+    pub user_public_key: Vec<u8>,
+    pub key_handle: Vec<u8>,
+    pub attestation_certificate: Vec<u8>,
+    pub signature: Vec<u8>,
 }
 
 #[derive(Deserialize)]
 struct ClientData {
-    typ: String,
-    challenge: String,
-    origin: String,
+    pub typ: String,
+    pub challenge: String,
+    pub origin: String,
 }
 
 impl RegistrationResponse {
