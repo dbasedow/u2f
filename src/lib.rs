@@ -205,6 +205,10 @@ impl SignatureData {
 
         Ok(())
     }
+
+    pub fn counter(&self) -> u32 {
+        return self.counter;
+    }
 }
 
 #[test]
