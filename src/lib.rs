@@ -177,13 +177,17 @@ pub struct SignatureData {
 }
 
 impl SignatureData {
-    pub fn verify(&self, app_id: &str, challenge: &str, client_data: &[u8], public_key: &[u8]) -> Result<(), Error> {
+    pub fn verify(&self, allowed_origins: Vec<String>, challenge: &str, client_data: &[u8], public_key: &[u8]) -> Result<(), Error> {
         let client_data_json = serde_json::from_slice::<ClientData>(client_data).map_err(|_| Error::ParseError)?;
         if client_data_json.challenge != challenge {
             return Err(Error::ChallengeDoesNotMatch);
         }
 
-        let appid_hash = ring::digest::digest(&ring::digest::SHA256, app_id.as_bytes());
+        if !allowed_origins.contains(&client_data_json.origin) {
+            return Err(Error::OriginDoesNotMatch);
+        }
+
+        let appid_hash = ring::digest::digest(&ring::digest::SHA256, client_data_json.origin.as_bytes());
         let client_data_hash = ring::digest::digest(&ring::digest::SHA256, client_data);
 
         let counter = self.counter.to_be_bytes();
@@ -209,8 +213,10 @@ fn test_signature_data_verify() {
     let sig_data = base64::decode_config("AQAAAAcwRgIhAMIZkfT3V843TjB_0Lpe69qSD--mdRVFZTVNa01u01QBAiEAw9sKwHe7lf_hlN63UH7g8k0BUgzsloSkFPOk_34ujEk", base64::URL_SAFE_NO_PAD).unwrap();
     let sig = parse_signature_data(&sig_data).unwrap();
     let client_data = base64::decode_config("eyJjaGFsbGVuZ2UiOiJ2Y2V1enZiMzc4Yml1bml1Iiwib3JpZ2luIjoiaHR0cHM6Ly9sb2NhbGhvc3Q6MjAyMCIsInR5cCI6Im5hdmlnYXRvci5pZC5nZXRBc3NlcnRpb24ifQ", base64::URL_SAFE_NO_PAD).unwrap();
-    let res = sig.verify("https://localhost:2020", "vceuzvb378biuniu", &client_data, &pub_key);
+    let res = sig.verify(vec!["https://localhost:2020".to_string()], "vceuzvb378biuniu", &client_data, &pub_key);
     assert!(res.is_ok());
+    let res = sig.verify(vec!["https://localghost:2020".to_string()], "vceuzvb378biuniu", &client_data, &pub_key);
+    assert!(res.is_err());
 }
 
 pub fn parse_signature_data(data: &[u8]) -> Result<SignatureData, Error> {
