@@ -7,6 +7,7 @@ use base64;
 pub enum Error {
     ParseError,
     Signature,
+    Attestation,
     ChallengeDoesNotMatch,
     OriginDoesNotMatch,
     KeyHandleDoesNotMatch,
@@ -38,7 +39,7 @@ impl RegistrationResponse {
         }
 
         let cert = EndEntityCert::from(Input::from(&self.attestation_certificate))
-            .map_err(|_| Error::Signature)?;
+            .map_err(|_| Error::Attestation)?;
 
         let msg_len = 1 + 32 + 32 + self.key_handle.len() + 65;
         let appid_hash = ring::digest::digest(&ring::digest::SHA256, client_data_json.origin.as_bytes());
